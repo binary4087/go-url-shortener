@@ -29,6 +29,12 @@ func main() {
 		http.Redirect(w, r, long, http.StatusMovedPermanently)
 	})
 
+	http.HandleFunc("/stats/", func(w http.ResponseWriter, r *http.Request) {
+		short := r.URL.Path[len("/stats/"):]
+		hits := svc.GetHits(short)
+		fmt.Fprintf(w, "URL %s has been visited %d times", short, hits)
+	})
+
 	fmt.Println("Server starting on :8080...")
 	http.ListenAndServe(":8080", nil)
 }
