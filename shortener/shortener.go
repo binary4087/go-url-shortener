@@ -1,7 +1,6 @@
 package shortener
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -21,6 +20,12 @@ func encodeBase62(n uint64) string {
 		res[i], res[j] = res[j], res[i]
 	}
 	return string(res)
+}
+
+type URLStats struct {
+	ShortURL string
+	LongURL  string
+	Hits     int
 }
 
 type URLShortener struct {
@@ -71,4 +76,19 @@ func (s *URLShortener) GetHits(shortURL string) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.hits[shortURL]
+}
+
+func (s *URLShortener) ListAll() []URLStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	stats := make([]URLStats, 0, len(s.urls))
+	for short, long := range s.urls {
+		stats = append(stats, URLStats{
+			ShortURL: short,
+			LongURL:  long,
+			Hits:     s.hits[short],
+		})
+	}
+	return stats
 }

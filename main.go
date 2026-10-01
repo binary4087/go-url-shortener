@@ -35,8 +35,20 @@ func main() {
 
 	http.HandleFunc("/stats/", func(w http.ResponseWriter, r *http.Request) {
 		short := r.URL.Path[len("/stats/"):]
+		if short == "" {
+			http.Redirect(w, r, "/stats", http.StatusMovedPermanently)
+			return
+		}
 		hits := svc.GetHits(short)
 		fmt.Fprintf(w, "URL %s has been visited %d times", short, hits)
+	})
+
+	http.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+		stats := svc.ListAll()
+		fmt.Fprintf(w, "All Shortened URLs:\n")
+		for _, s := range stats {
+			fmt.Fprintf(w, "%s -> %s (%d hits)\n", s.ShortURL, s.LongURL, s.Hits)
+		}
 	})
 
 	fmt.Println("Server starting on :8080...")
