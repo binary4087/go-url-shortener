@@ -21,9 +21,13 @@ func main() {
 
 	http.HandleFunc("/r/", func(w http.ResponseWriter, r *http.Request) {
 		short := r.URL.Path[len("/r/"):]
+		if short == "" {
+			http.Redirect(w, r, "/", http.StatusMovedPermanently)
+			return
+		}
 		long, exists := svc.Resolve(short)
 		if !exists {
-			http.NotFound(w, r)
+			http.Error(w, fmt.Sprintf("Short URL '%s' not found", short), http.StatusNotFound)
 			return
 		}
 		http.Redirect(w, r, long, http.StatusMovedPermanently)
