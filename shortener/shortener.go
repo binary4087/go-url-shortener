@@ -2,6 +2,7 @@ package shortener
 
 import (
 	"sync"
+	"time"
 )
 
 const base62Chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -28,9 +29,14 @@ type URLStats struct {
 	Hits     int
 }
 
+type urlEntry struct {
+	longURL   string
+	expiresAt time.Time
+}
+
 type URLShortener struct {
 	mu       sync.RWMutex
-	urls     map[string]string
+	urls     map[string]urlEntry
 	reversed map[string]string
 	hits     map[string]int
 	counter  uint64
@@ -38,7 +44,7 @@ type URLShortener struct {
 
 func New() *URLShortener {
 	return &URLShortener{
-		urls:     make(map[string]string),
+		urls:     make(map[string]urlEntry),
 		reversed: make(map[string]string),
 		hits:     make(map[string]int),
 		counter:  100000, // Start at a higher number for consistent length
@@ -56,7 +62,29 @@ func (s *URLShortener) Shorten(longURL string) string {
 	s.counter++
 	short := encodeBase62(s.counter)
 
-	s.urls[short] = longURL
+	s.urls[short] = urlEntry{
+		longURL:   longURL,
+		expiresAt: time.Time{}, // No expiration by default
+	}
+	s.reversed[longURL] = short
+	return short
+}
+
+func (s *URLShortener) ShortenWithExpiration(longURL string, duration time.Duration) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if short, exists := s.reversed[longURL]; exists {
+		return short
+	}
+
+	s.counter++
+	short := encodeBase62(s.counter)
+
+	s.urls[short] = urlEntry{
+		longURL:   longURL,
+		expiresAt: time.Now().Add(duration),
+	}
 	s.reversed[longURL] = short
 	return short
 }
@@ -65,11 +93,20 @@ func (s *URLShortener) Resolve(shortURL string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	long, exists := s.urls[shortURL]
-	if exists {
-		s.hits[shortURL]++
+	entry, exists := s.urls[shortURL]
+	if !exists {
+		return "", false
 	}
-	return long, exists
+
+	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
+		delete(s.urls, shortURL)
+		delete(s.reversed, entry.longURL)
+		delete(s.hits, shortURL)
+		return "", false
+	}
+
+	s.hits[shortURL]++
+	return entry.longURL, true
 }
 
 func (s *URLShortener) GetHits(shortURL string) int {
@@ -83,12 +120,29 @@ func (s *URLShortener) ListAll() []URLStats {
 	defer s.mu.RUnlock()
 
 	stats := make([]URLStats, 0, len(s.urls))
-	for short, long := range s.urls {
+	for short, entry := range s.urls {
 		stats = append(stats, URLStats{
 			ShortURL: short,
-			LongURL:  long,
+			LongURL:  entry.longURL,
 			Hits:     s.hits[short],
 		})
 	}
 	return stats
+}
+
+func (s *URLShortener) CleanupExpired() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	count := 0
+	now := time.Now()
+	for short, entry := range s.urls {
+		if !entry.expiresAt.IsZero() && now.After(entry.expiresAt) {
+			delete(s.reversed, entry.longURL)
+			delete(s.hits, short)
+			delete(s.urls, short)
+			count++
+		}
+	}
+	return count
 }
