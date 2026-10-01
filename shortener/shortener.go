@@ -1,17 +1,34 @@
 package shortener
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"sync"
 )
+
+const base62Chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func encodeBase62(n uint64) string {
+	if n == 0 {
+		return string(base62Chars[0])
+	}
+	var res []byte
+	for n > 0 {
+		res = append(res, base62Chars[n%62])
+		n /= 62
+	}
+	// Reverse the slice
+	for i, j := 0, len(res)-1; i < j; i, j = i+1, j-1 {
+		res[i], res[j] = res[j], res[i]
+	}
+	return string(res)
+}
 
 type URLShortener struct {
 	mu       sync.RWMutex
 	urls     map[string]string
 	reversed map[string]string
 	hits     map[string]int
+	counter  uint64
 }
 
 func New() *URLShortener {
@@ -19,6 +36,7 @@ func New() *URLShortener {
 		urls:     make(map[string]string),
 		reversed: make(map[string]string),
 		hits:     make(map[string]int),
+		counter:  100000, // Start at a higher number for consistent length
 	}
 }
 
@@ -30,16 +48,8 @@ func (s *URLShortener) Shorten(longURL string) string {
 		return short
 	}
 
-	hash := sha256.Sum256([]byte(longURL))
-	short := base64.URLEncoding.EncodeToString(hash[:])[:8]
-
-	// Handle potential collisions
-	for {
-		if _, exists := s.urls[short]; !exists {
-			break
-		}
-		short = short + fmt.Sprintf("%x", hash[8])[:1]
-	}
+	s.counter++
+	short := encodeBase62(s.counter)
 
 	s.urls[short] = longURL
 	s.reversed[longURL] = short
