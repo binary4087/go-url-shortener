@@ -43,11 +43,20 @@ type URLShortener struct {
 }
 
 func New() *URLShortener {
-	return &URLShortener{
+	s := &URLShortener{
 		urls:     make(map[string]urlEntry),
 		reversed: make(map[string]string),
 		hits:     make(map[string]int),
 		counter:  100000, // Start at a higher number for consistent length
+	}
+	go s.startCleanupTimer()
+	return s
+}
+
+func (s *URLShortener) startCleanupTimer() {
+	ticker := time.NewTicker(10 * time.Minute)
+	for range ticker.C {
+		s.CleanupExpired()
 	}
 }
 
